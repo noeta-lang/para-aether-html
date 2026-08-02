@@ -1,0 +1,295 @@
+// `para.aether_html` — the per-frame onion for para/html LiveView pages, in para/aether's vocabulary.
+//
+// para/html owns a dispatch loop: a table of generated handler ids, invoked on a name and a payload
+// the client chooses, for as long as a socket stays open. aether owns an onion, but it runs per HTTP
+// *request* — and `server.websocket` is a connection-hijack response, so the whole session lives
+// inside ONE request/response cycle. The middleware stack fires once at the upgrade and unwinds
+// before the first click. Authorizing the upgrade and nothing after is not authorization.
+//
+// This package closes that gap by layering aether's onion shape one level down, over para/html's
+// `Wake` — a client frame or an idle tick — so a layer sees every unit of client-originated work,
+// not just the connect.
+//
+// It lives in its own repo rather than in either dependency, for the reason `para/aether_db` states
+// for the session store: **para/html must not depend on the web framework** (it is std-only and
+// standalone-servable, and both would be lost), and **aether must not depend on para/html** (a
+// REST-only app should not carry the LiveView engine, its tier handler, and its reconciler). A
+// composition of two packages belongs beside them, not inside one of them.
+use para.aether.SessionStore
+use para.html.{Css, Html, Wake, handle_all}
+use std.datetime
+use std.http.{Request, Response}
+use std.reactive.{signal, Signal}
+use std.session.Session
+
+// --- The frame. ---------------------------------------------------------------------------------
+
+// One wake travelling through the onion: para/html's `Wake` plus the per-frame scratch that layers
+// share. `ctx` is how an outer layer hands an inner one what it already worked out — an authorization
+// layer resolves the session once and leaves the identity behind, so a later layer neither re-opens
+// the cookie nor re-queries the row.
+//
+// Scoped to one frame, deliberately. Session-lifetime state would have to be invalidated when the
+// thing it caches changes, and there is nothing on this path that could notice; a frame-scoped value
+// is correct by construction because it cannot outlive the wake that computed it.
+pub struct Frame {
+    wake: Wake
+    ctx: Signal<Map<string, string>>
+
+    // The handler id the client named — `""` on a tick.
+    fn name(): string {
+        return self.wake.name
+    }
+
+    // The payload the client sent — `""` on a tick. Already past para/html's unconditional size cap.
+    fn value(): string {
+        return self.wake.value
+    }
+
+    // Whether this wake is the session's own idle tick rather than a client frame. Authorization
+    // layers should pass a tick through: there is no client behind it to authorize.
+    fn tick(): bool {
+        return self.wake.tick
+    }
+
+    // The request that opened the socket, or `none` on the browserless path (para/html's `wake`
+    // builds one without a request, so a stack of layers can be driven with no socket). What a layer
+    // reads a cookie or a header off — see `Authorize` for why the *store* behind it decides whether
+    // mid-session revocation lands, and for what absence has to mean.
+    fn origin(): ?Request {
+        return self.wake.origin
+    }
+
+    // Read a value an outer layer left, or `fallback` if none did.
+    fn get(key: string, fallback: string): string {
+        return self.ctx.get().get_or(key, fallback)
+    }
+
+    // Leave a value for the layers inside this one.
+    fn set(key: string, value: string): void {
+        self.ctx.set(self.ctx.get().set(key, value))
+    }
+}
+
+// Build the frame for one wake. Each frame gets its own empty context.
+fn frame_of(w: Wake): Frame {
+    return Frame { wake: w, ctx: signal({}) }
+}
+
+// --- The onion. ---------------------------------------------------------------------------------
+
+// A layer of the frame onion — the same shape as aether's `Middleware`, one level down. `handle`
+// receives the frame AND `next`, the rest of the pipeline with the actual work at the bottom, so a
+// layer may inspect the frame and continue (`next.run(f)`), measure what continuing cost, or answer
+// by NOT continuing at all — which is what a refusal is.
+//
+// `void`, not `Response`, and that is the one real difference from the HTTP onion: a frame produces
+// *effects* — signal writes — and the reply is whatever the diff pushes afterwards. A layer with
+// something to say to the page writes it into a signal and lets the reactive graph carry it, so
+// there is exactly one way anything reaches a browser instead of two.
+pub trait FrameMiddleware {
+    fn handle(f: Frame, next: FrameNext): void
+}
+
+// The rest of the frame pipeline, as a value. `next.run(f)` continues inward; the innermost `run`
+// calls `proceed`, para/html's thunk for the actual wake (dispatch the handler or run the tick, then
+// reconcile every keyed region and push the diff).
+//
+// A cursor — shared stack, advancing index — rather than a closure captured per layer, mirroring
+// aether's `Next` exactly: entering a layer allocates one small struct instead of an environment.
+pub struct FrameNext {
+    stack: List<dyn FrameMiddleware>
+    index: int
+    proceed: () -> void
+
+    // Continue inward. Calling this is what makes a layer transparent; NOT calling it is what makes
+    // a layer refuse — the frame's work simply never happens and the page stays as it was.
+    fn run(f: Frame): void {
+        if self.index >= self.stack.len() {
+            self.proceed()
+        } else {
+            rest = FrameNext { stack: self.stack, index: self.index + 1, proceed: self.proceed }
+            self.stack[self.index].handle(f, rest)
+        }
+    }
+}
+
+// Compose a stack of layers into the interceptor `para.html.handle_all` takes. The first layer
+// registered is the outermost — it sees the frame first, exactly as aether's first middleware sees
+// the request first.
+//
+// Exposed on its own so an app that drives `handle_all` directly (its own `every_ms`, its own tick,
+// its own stylesheet) can still get the onion, without this package having to mirror every one of
+// para/html's entry points.
+pub fn onion(layers: List<dyn FrameMiddleware>): (Wake, () -> void) -> void {
+    return fn(w: Wake, proceed: () -> void) {
+        FrameNext { stack: layers, index: 0, proceed: proceed }.run(frame_of(w))
+    }
+}
+
+// --- Serving. -----------------------------------------------------------------------------------
+
+// The drop-in replacement for `para.html.handle`: the same page, with `layers` around every wake.
+//
+//     fn fetch(req: Request): Response {
+//         return aether_html.serve(req, "Todos", page, [Authorize.new(sessions, may_act)])
+//     }
+pub fn serve(
+    req: Request,
+    title: string,
+    render_page: () -> Html,
+    layers: List<dyn FrameMiddleware>,
+): Response {
+    return serve_all(req, title, render_page, 500, fn() {}, none, layers)
+}
+
+// `serve` with every knob para/html exposes: the idle-tick cadence, the tick callback (where an app
+// drains a queue it syncs from), and a page stylesheet.
+//
+// The unconditional limits — payload size and frame rate — are NOT part of this and cannot be
+// layered away: para/html enforces them inside its own session loop for every page, mounted or
+// standalone. A layer only ever sees wakes that already cleared them. That placement is deliberate;
+// limits shipped as layers would exist only for apps that adopted this package, leaving the plain
+// one-file LiveView page as the one with no protections.
+pub fn serve_all(
+    req: Request,
+    title: string,
+    render_page: () -> Html,
+    every_ms: int,
+    on_tick: () -> void,
+    styles: ?Css,
+    layers: List<dyn FrameMiddleware>,
+): Response {
+    return handle_all(req, title, render_page, every_ms, on_tick, styles, some(onion(layers)))
+}
+
+// --- Layers. ------------------------------------------------------------------------------------
+
+// Authorize every client frame against the session behind the socket.
+//
+// `may_act(session, frame)` is the app's policy — this package supplies no notion of a role or a
+// permission, only the place to ask. A tick passes through untouched: it has no client behind it.
+// The identity is resolved **per frame**, not captured at upgrade, and the resolved value is left in
+// the frame context under `"identity"` for inner layers.
+//
+// **What per-frame resolution does and does not buy.** It re-reads the session on every frame, so
+// with a *stored* backend (`para/aether_db`'s `DbSessions`, whose `open` hits the row) deleting the
+// row lands mid-session: the next frame is refused, and "log out everywhere" is real. With the
+// stateless `CookieSessions` the whole session rides in the cookie the upgrade carried, and that
+// cookie cannot change while the socket is open — so re-reading it returns the same value forever
+// and revocation still waits for the reconnect. The layer is correct either way; which one you get
+// is a property of the store you wired, and it is worth knowing which.
+//
+// Authorization is a coarse gate by design: it can see the handler id, but ids are generated
+// (`e0`, `c1-e0`, `<key>-e0`) and carry no meaning, so a layer cannot ask "may this user delete THIS
+// todo?" — nothing in the id says which todo. That question belongs at the call site, on the binding:
+// `on_click(del).only_if(fn() => user.can_edit(t))`. The two are complementary, not alternatives.
+pub class Authorize {
+    sessions: dyn SessionStore
+    may_act: (Session, Frame) -> bool
+
+    fn new(sessions: dyn SessionStore, may_act: (Session, Frame) -> bool): Authorize {
+        return Authorize { sessions: sessions, may_act: may_act }
+    }
+
+    // Resolve the session behind this frame, put it to the app's policy, and leave the identity for
+    // the layers inside. Split out of `handle` because a match arm is an expression: the gate has to
+    // produce a verdict, not perform control flow.
+    fn admit(f: Frame, req: Request): bool {
+        s = self.sessions.open(req)
+        if !self.may_act(s, f) {
+            return false
+        }
+        f.set("identity", s.get("user") ?? "")
+        return true
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {
+            // A tick passes: no client behind it to authorize. A frame with no request behind it
+            // fails CLOSED — a live socket always has one, so absence is the browserless path, and a
+            // security layer that waved frames through whenever it could not identify the caller
+            // would be exactly backwards.
+            admitted = if f.tick()
+                then true
+                else match f.origin() {
+                    none => false,
+                    some(req) => self.admit(f, req),
+                }
+            if admitted {
+                next.run(f)
+            }
+        }
+    }
+}
+
+// Rate-limit one named action beyond para/html's global frame cap.
+//
+// The global cap (120 frames/second) bounds a flood; it does nothing about an action that is cheap
+// to *request* and expensive to *serve* — a report, a mail, a query. This caps one handler id to
+// `budget` frames per `window_ms`, dropping the rest.
+//
+// Keyed by handler id, which means it is stable only while the page's shape is: a top-level binding
+// keeps its `eN` across renders, a keyed row's `<key>-eN` lives and dies with its row. Cap top-level
+// actions with it; a per-row cap wants the row's own key in the picture, which is app policy.
+pub class RateLimit {
+    action: string
+    budget: int
+    window_ms: int
+    window_start: Signal<int>
+    used: Signal<int>
+
+    fn new(action: string, budget: int, window_ms: int): RateLimit {
+        return RateLimit {
+            action: action,
+            budget: budget,
+            window_ms: window_ms,
+            window_start: signal(datetime.now().unix_ms()),
+            used: signal(0),
+        }
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {
+            if f.tick() || f.name() != self.action {
+                next.run(f)
+            } else {
+                now = datetime.now().unix_ms()
+                if now - self.window_start.get() >= self.window_ms {
+                    self.window_start.set(now)
+                    self.used.set(0)
+                }
+                self.used.set(self.used.get() + 1)
+                if self.used.get() <= self.budget {
+                    next.run(f)
+                }
+            }
+        }
+    }
+}
+
+// Report every frame and what it cost, to a sink of the app's choosing (`log.info`, a metrics
+// counter, a test's accumulator). Wraps `next.run` rather than preceding it, which is the whole
+// reason the seam hands over the rest of the wake as a thunk: the elapsed time this measures covers
+// the handler, the keyed reconcile, AND the diff push — the actual cost of the frame, not the cost
+// of deciding to run it.
+//
+// Put it outermost to time everything including the layers below, or innermost to time only the
+// work itself.
+pub class Trace {
+    sink: (string) -> void
+
+    fn new(sink: (string) -> void): Trace {
+        return Trace { sink: sink }
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {
+            started = datetime.now().unix_ms()
+            next.run(f)
+            took = datetime.now().unix_ms() - started
+            kind = if f.tick() then "tick" else "frame ${f.name()}"
+            self.sink("${kind} took ${took}ms")
+        }
+    }
+}

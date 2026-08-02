@@ -1,0 +1,30 @@
+[package]
+name = "para/aether_html"
+version = "0.1.0"
+# The minimum noeta this package works with; enforced at resolve time from noeta 0.2.1 on.
+toolchain = ">=0.3"
+license = "MIT OR Apache-2.0"
+description = "The per-frame onion for para/html LiveView pages — authorization, rate limiting, and tracing per websocket frame, in aether's vocabulary."
+keywords = ["liveview", "web", "aether", "middleware", "websocket"]
+
+# The frame onion for para/html LiveView pages under para/aether. A PURE-Noeta package (no native
+# half of its own): it composes the `SessionStore` trait + `Session` currency from para/aether with
+# the `Wake` seam and `handle_all` entry point from para/html.
+#
+# It therefore depends on TWO sibling packages of the same `para` scope, bound under one `para` scope
+# key as an array — the multi-package-per-scope resolution (`Dependency::Scope`) an app uses, here on
+# a PACKAGE. This is why the onion lives in its own companion package rather than in either
+# dependency: para/html must not depend on the web framework (it is std-only and standalone-servable,
+# and both properties would be lost), and folding it into aether-core would make the LiveView engine,
+# its tier handler, and its reconciler mandatory for every aether app, including the REST-only ones.
+# An app opts in by adding `para/aether-html` to the `para` scope it already lists aether (and
+# para/html) under.
+#
+# para/html is on the pre-publish local-path form until the `Wake` seam ships in its 0.3.0 — the same
+# shape para/aether_db carried its siblings in before they were published. It flips to
+# `{ version = "^0.3", package = "para/html" }` at publish; nothing else about this manifest changes.
+[dependencies]
+para = [
+    { version = "^0.2", package = "para/aether" },
+    { path = "/home/niklas/Code/para/para-html/.claude/worktrees/frame-seam" },
+]

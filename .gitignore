@@ -1,0 +1,9 @@
+target/
+
+# Example projects are demos, not package roots — their lockfiles
+# regenerate on every run and are not meant to be committed.
+examples/*/noeta.lock
+
+# A library package resolves nothing of its own — consumers lock. No sibling para repo
+# tracks a lockfile; this keeps a stray root lock from being committed by accident.
+noeta.lock

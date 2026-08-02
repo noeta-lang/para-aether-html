@@ -1,0 +1,152 @@
+// The frame onion, driven with no browser and no socket — the counterpart to para/html's
+// `liveview-events`, and for the same reason: a security layer whose only exercise is a live
+// websocket is a security layer nobody tests.
+//
+//   noeta run onion_demo.noe
+//
+// `para.html.wake` builds a wake by hand and `onion(layers)` returns exactly the interceptor
+// `handle_all` receives, so what runs here is the production path with a synthetic frame at the top
+// rather than a socket.
+use para.aether_html
+use para.aether_html.{Frame, FrameMiddleware, FrameNext, RateLimit, Trace, onion}
+use para.html
+use std.reactive.signal
+
+// A layer that records the order it saw a frame in, then continues — enough to prove the onion
+// nests rather than merely iterating: an outer layer's *after* runs after every inner layer.
+class Mark {
+    label: string
+    trail: Signal<string>
+
+    fn new(label: string, trail: Signal<string>): Mark {
+        return Mark { label: label, trail: trail }
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {
+            self.trail.set("${self.trail.get()}>${self.label}")
+            next.run(f)
+            self.trail.set("${self.trail.get()}<${self.label}")
+        }
+    }
+}
+
+// A layer that refuses every client frame by never calling `next` — the shape every authorization
+// layer bottoms out in.
+class Deny {
+    fn new(): Deny {
+        return Deny {}
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {}
+    }
+}
+
+// A layer that leaves a value for the layers inside it, proving the per-frame context threads.
+class Stamp {
+    fn new(): Stamp {
+        return Stamp {}
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {
+            f.set("who", "ada")
+            next.run(f)
+        }
+    }
+}
+
+class ReadStamp {
+    seen: Signal<string>
+
+    fn new(seen: Signal<string>): ReadStamp {
+        return ReadStamp { seen: seen }
+    }
+
+    impl FrameMiddleware {
+        fn handle(f: Frame, next: FrameNext): void {
+            self.seen.set(f.get("who", "<none>"))
+            next.run(f)
+        }
+    }
+}
+
+// Run one synthetic frame through a stack, reporting whether the work at the bottom ran.
+fn drive(layers: List<dyn FrameMiddleware>, name: string, tick: bool): bool {
+    ran = signal(false)
+    intercept = onion(layers)
+    intercept(html.wake(name, "", tick), fn() => ran.set(true))
+    return ran.get()
+}
+
+fn empty_stack(): void {
+    // An onion with no layers must be indistinguishable from no interceptor at all — the property
+    // that lets `serve` and para/html's plain `handle` be the same code path with a different stack.
+    // If this ever diverges, every claim about "adopting this package changes nothing else" is false.
+    echo drive([], "e0", false)
+    echo drive([], "", true)
+}
+
+fn nesting(): void {
+    trail = signal("")
+    // Registration order is outside-in, exactly as aether's HTTP onion: the first layer sees the
+    // frame first and finishes last.
+    echo drive([Mark.new("a", trail), Mark.new("b", trail)], "e0", false)
+    echo trail.get()
+}
+
+fn refusal(): void {
+    // A layer that never calls `next` stops the work — and stops every layer inside it too.
+    trail = signal("")
+    echo drive([Deny.new(), Mark.new("inner", trail)], "e0", false)
+    echo trail.get() == ""
+    // Refusing is positional: the same `Deny` inside a `Mark` still lets the outer layer run.
+    trail2 = signal("")
+    echo drive([Mark.new("outer", trail2), Deny.new()], "e0", false)
+    echo trail2.get()
+}
+
+fn context(): void {
+    seen = signal("")
+    echo drive([Stamp.new(), ReadStamp.new(seen)], "e0", false)
+    echo seen.get()
+    // The context is per FRAME, not per session: a second frame through the same stack starts empty.
+    seen2 = signal("")
+    echo drive([ReadStamp.new(seen2)], "e0", false)
+    echo seen2.get()
+}
+
+fn rate_limiting(): void {
+    // A budget of 2 per minute on one action: the third frame is dropped, and a DIFFERENT action is
+    // untouched by the cap.
+    limit = RateLimit.new("e0", 2, 60000)
+    echo drive([limit], "e0", false)
+    echo drive([limit], "e0", false)
+    echo drive([limit], "e0", false)
+    echo drive([limit], "e1", false)
+    // A tick is never rate-limited: it has no client behind it.
+    echo drive([limit], "", true)
+}
+
+fn tracing(): void {
+    // `Trace` wraps the work rather than preceding it, so what it reports covers the frame's whole
+    // cost — the handler, the keyed reconcile, and the diff push.
+    said = signal("")
+    echo drive([Trace.new(fn(m: string) => said.set(m))], "e7", false)
+    echo said.get().starts_with("frame e7 took")
+    said2 = signal("")
+    echo drive([Trace.new(fn(m: string) => said2.set(m))], "", true)
+    echo said2.get().starts_with("tick took")
+}
+
+fn main(): void {
+    empty_stack()
+    nesting()
+    refusal()
+    context()
+    rate_limiting()
+    tracing()
+}
+
+main()

@@ -1,0 +1,53 @@
+name: CI
+
+# The para/aether_html package's CI: check + test every example program with a pinned released
+# `noeta`. This package is pure Noeta, but its examples compose para/html, whose dev-native tier-body
+# formatters the composed toolchain cargo-builds — so the pinned Rust toolchain is installed too.
+#
+# NOTE: this goes green once para/html 0.3.0 (the `Wake` seam this package layers over) is published
+# and the pre-publish local-path dep on it is flipped to the registry version. Until then the runner
+# cannot resolve para/html and the resolve step fails by design.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Callable as the release gate (release.yml runs the full CI before publishing).
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Pinned in lockstep with the toolchain repo's own CI (dtolnay/rust-toolchain@1.97.0 there): the
+# NOETA_VERSION resolves from the org-level Actions variable of the same name (single bump
+# point for every para repo), falling back to the literal. Bumping is
+# deliberate — raise it here and in `release.yml` together.
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  NOETA_VERSION: ${{ vars.NOETA_VERSION || 'v0.1.0' }}
+
+jobs:
+  examples:
+    name: Examples (noeta check + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The examples pull para/html, whose dev-native tier-body formatters the composed toolchain
+      # cargo-builds — so the Rust toolchain is required even though this package is pure Noeta.
+      - uses: dtolnay/rust-toolchain@1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install noeta ${{ env.NOETA_VERSION }}
+        run: |
+          DIST="noeta-${NOETA_VERSION}-x86_64-unknown-linux-gnu"
+          curl -fsSL "https://github.com/noeta-lang/noeta/releases/download/${NOETA_VERSION}/${DIST}.tar.gz" | tar -xz
+          echo "${PWD}/${DIST}" >> "$GITHUB_PATH"
+      - name: noeta check + test every example
+        run: |
+          for ex in examples/*/; do
+            echo "== ${ex}"
+            for f in "${ex}"*.noe; do
+              (cd "${ex}" && noeta check "$(basename "$f")" && noeta test "$(basename "$f")")
+            done
+          done
