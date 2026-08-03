@@ -15,8 +15,8 @@
 // standalone-servable, and both would be lost), and **aether must not depend on para/html** (a
 // REST-only app should not carry the LiveView engine, its tier handler, and its reconciler). A
 // composition of two packages belongs beside them, not inside one of them.
-use para.aether.SessionStore
-use para.html.{Css, Html, Wake, handle_all}
+use para.aether.{Middleware, Next, SessionStore}
+use para.html.{Css, Html, Wake, handle, serves}
 use std.datetime
 use std.http.{Request, Response}
 use std.reactive.{signal, Signal}
@@ -114,13 +114,12 @@ pub struct FrameNext {
     }
 }
 
-// Compose a stack of layers into the interceptor `para.html.handle_all` takes. The first layer
+// Compose a stack of layers into the interceptor `para.html.handle`'s `intercept:` takes. The first layer
 // registered is the outermost — it sees the frame first, exactly as aether's first middleware sees
 // the request first.
 //
-// Exposed on its own so an app that drives `handle_all` directly (its own `every_ms`, its own tick,
-// its own stylesheet) can still get the onion, without this package having to mirror every one of
-// para/html's entry points.
+// Exposed on its own so an app that calls `para.html.handle` directly can still get the onion,
+// without this package having to mirror para/html's argument list a second time.
 pub fn onion(layers: List<dyn FrameMiddleware>): (Wake, () -> void) -> void {
     return fn(w: Wake, proceed: () -> void) {
         FrameNext { stack: layers, index: 0, proceed: proceed }.run(frame_of(w))
@@ -134,33 +133,115 @@ pub fn onion(layers: List<dyn FrameMiddleware>): (Wake, () -> void) -> void {
 //     fn fetch(req: Request): Response {
 //         return aether_html.serve(req, "Todos", page, [Authorize.new(sessions, may_act)])
 //     }
-pub fn serve(
-    req: Request,
-    title: string,
-    render_page: () -> Html,
-    layers: List<dyn FrameMiddleware>,
-): Response {
-    return serve_all(req, title, render_page, 500, fn() {}, none, layers)
-}
-
-// `serve` with every knob para/html exposes: the idle-tick cadence, the tick callback (where an app
-// drains a queue it syncs from), and a page stylesheet.
+//
+// Everything past `layers` mirrors para/html's own named arguments — `every_ms:`/`on_tick:` for the
+// idle tick, `styles:` for a `@css` sheet, `base:` to mount under a prefix. Use `LiveMount` instead
+// when the page belongs inside an aether `App` beside other routes.
 //
 // The unconditional limits — payload size and frame rate — are NOT part of this and cannot be
 // layered away: para/html enforces them inside its own session loop for every page, mounted or
 // standalone. A layer only ever sees wakes that already cleared them. That placement is deliberate;
 // limits shipped as layers would exist only for apps that adopted this package, leaving the plain
 // one-file LiveView page as the one with no protections.
-pub fn serve_all(
+pub fn serve(
     req: Request,
     title: string,
     render_page: () -> Html,
-    every_ms: int,
-    on_tick: () -> void,
-    styles: ?Css,
     layers: List<dyn FrameMiddleware>,
+    every_ms: int = 500,
+    on_tick: () -> void = fn() {},
+    styles: ?Css = none,
+    base: string = "",
 ): Response {
-    return handle_all(req, title, render_page, every_ms, on_tick, styles, some(onion(layers)))
+    return handle(
+        req,
+        title,
+        render_page,
+        every_ms: every_ms,
+        on_tick: on_tick,
+        styles: styles,
+        intercept: some(onion(layers)),
+        base: base,
+    )
+}
+
+// --- Mounting into an aether app. --------------------------------------------------------------
+
+// Mount a LiveView page into an aether `App` as a middleware layer, so it lives beside the app's
+// other routes and behind its HTTP onion.
+//
+// A middleware rather than a route, because aether's routes dispatch to reflected controller methods
+// and a page is a closure — and because the onion already has the exact shape this needs: a layer
+// that answers without calling `next` IS a mount. `app.use_middleware(LiveMount.new(…))` and the
+// page is live at its prefix; every other path falls through untouched.
+//
+// The result is two nested onions, which is the honest picture. aether's HTTP onion runs once, on the
+// upgrade — that is where CORS, logging, and connect-time auth belong. The frame onion runs on every
+// wake for the life of the socket — that is where per-frame authorization, budgets, and tracing
+// belong. Neither can do the other's job; see this package's README for why.
+//
+// Which paths belong to the mount is `para.html.serves`, not a predicate of this package's own: one
+// rule, read by para/html's routing and by this gate, so a mount and the page it mounts cannot
+// disagree about where the page lives.
+pub class LiveMount {
+    base: string
+    title: string
+    render_page: () -> Html
+    layers: List<dyn FrameMiddleware>
+    every_ms: int
+    on_tick: () -> void
+    styles: ?Css
+
+    // Mount `render_page` at `base` (`"/todos"` serves `/todos`, `/todos/ws`, `/todos/live.js`).
+    // Mounting at `""` would make the page the app's catch-all, which is what standalone `serve` is
+    // for — pass a real prefix here.
+    fn new(
+        base: string,
+        title: string,
+        render_page: () -> Html,
+        layers: List<dyn FrameMiddleware>,
+        every_ms: int = 500,
+        on_tick: () -> void = fn() {},
+        styles: ?Css = none,
+    ): LiveMount {
+        return LiveMount {
+            base: base,
+            title: title,
+            render_page: render_page,
+            layers: layers,
+            every_ms: every_ms,
+            on_tick: on_tick,
+            styles: styles,
+        }
+    }
+
+    // Whether this mount answers `path` — the gate `handle` applies, exposed as a method so the
+    // decision is testable without a live request. The middleware itself needs one; this does not,
+    // and the decision is the part with a rule in it.
+    //
+    // Delegates to `para.html.serves` rather than restating the rule, so a mount and the page it
+    // mounts cannot disagree about where the page lives.
+    fn claims(path: string): bool {
+        return serves(self.base, path)
+    }
+
+    impl Middleware {
+        fn handle(req: Request, next: Next): Response {
+            if !self.claims(req.path()) {
+                return next.run(req)
+            }
+            return serve(
+                req,
+                self.title,
+                self.render_page,
+                self.layers,
+                every_ms: self.every_ms,
+                on_tick: self.on_tick,
+                styles: self.styles,
+                base: self.base,
+            )
+        }
+    }
 }
 
 // --- Layers. ------------------------------------------------------------------------------------
