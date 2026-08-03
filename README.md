@@ -29,9 +29,9 @@ One pure-Noeta module, `para.aether_html`:
 | `FrameMiddleware` | trait | one layer of the frame onion — `handle(f, next)`, the same shape as aether's `Middleware` |
 | `FrameNext` | struct | the rest of the pipeline as a value; `next.run(f)` continues inward, not calling it refuses |
 | `Frame` | struct | one wake in flight: para/html's `Wake` plus the per-frame context layers share |
-| `onion(layers)` | fn | compose a stack into the interceptor `para.html.handle_all` takes |
-| `serve(req, title, page, layers)` | fn | the drop-in replacement for `para.html.handle`, with the onion around every wake |
-| `serve_all(…)` | fn | `serve` with every knob para/html exposes — tick cadence, tick callback, stylesheet |
+| `onion(layers)` | fn | compose a stack into the interceptor `para.html.handle`'s `intercept:` takes |
+| `serve(req, title, page, layers, …)` | fn | the drop-in replacement for `para.html.handle`, with the onion around every wake |
+| `LiveMount` | class, `impl Middleware` | mount a page into an aether `App` at a prefix, beside its other routes |
 | `Authorize` | class, `impl FrameMiddleware` | resolve the session per frame and put it to the app's policy |
 | `RateLimit` | class, `impl FrameMiddleware` | cap one named action to a budget per window |
 | `Trace` | class, `impl FrameMiddleware` | report each frame and what it cost, to a sink of your choosing |
@@ -49,8 +49,8 @@ The same rule `para/aether_db` states for the session store, applied to the othe
 [dependencies]
 para = [
     { version = "^0.2", package = "para/aether" },
-    { version = "^0.3", package = "para/html" },
-    { version = "^0.1", package = "para/aether_html" },   # <- add this
+    { version = "^0.4", package = "para/html" },
+    { version = "^0.2", package = "para/aether_html" },   # <- add this
 ]
 ```
 
@@ -79,6 +79,36 @@ fn fetch(req: Request): Response {
 ```
 
 The first layer registered is the outermost — it sees the frame first and finishes last, exactly as aether's first middleware sees the request first.
+
+## Mounting into an aether app
+
+`serve` is the standalone door — the page owns the origin. To put a page beside an app's other routes, mount it:
+
+```noeta ignore
+app = App.new()
+app.register("Api", Api.new())
+app.use_middleware(LiveMount.new("/todos", "Todos", page, [
+    Authorize.new(sessions, fn(s, f) => s.get("user") != none),
+]))
+app.serve(8080)
+```
+
+The page is live at `/todos`, its socket at `/todos/ws`, its shim at `/todos/live.js`; everything else falls through to the rest of the app untouched.
+
+**A middleware rather than a route**, for two reasons. aether's routes dispatch to reflected controller methods and a page is a closure. And the onion already has exactly the right shape — a layer that answers without calling `next` *is* a mount.
+
+Which paths belong to the mount is `para.html.serves`, not a predicate of this package's own: one rule, read by para/html's routing and by this gate, so a mount and the page it mounts cannot disagree about where the page lives. Matching is segment-exact, so a `/to` mount does not claim `/todos`.
+
+### Two nested onions
+
+Mounting makes the actual model visible, and it is worth being explicit about which layer does what:
+
+| | runs | for | belongs there |
+| --- | --- | --- | --- |
+| aether's HTTP onion | once, on the upgrade | the request that opens the socket | CORS, request logging, connect-time auth |
+| this frame onion | every wake, for the socket's life | each client frame and idle tick | per-frame authorization, action budgets, frame tracing |
+
+Neither can do the other's job. An HTTP layer cannot see a click, because by the time one arrives its `Response` has long since been returned. A frame layer cannot reject the connection, because it only exists once there is one.
 
 ## What each layer is for, and what it is not
 
