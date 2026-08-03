@@ -4,7 +4,7 @@ Guidance for coding agents working in this repo — the standalone repo of the *
 
 ## Repo layout
 
-- `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is currently on the pre-publish local-path form until its 0.3.0 (the `Wake` seam) is published; it flips to `{ version = "^0.3", package = "para/html" }` then.
+- `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is pinned to `^0.3`: the `Wake` seam this package layers over landed in that release, and there is no way to build the onion against 0.2.
 - `aether_html.noe` — the whole surface: the `Frame`/`FrameMiddleware`/`FrameNext` onion, `onion`/`serve`/`serve_all`, and the three shipped layers (`Authorize`, `RateLimit`, `Trace`).
 - `examples/*/` — each a standalone package depending on this repo via `{ path = "../.." }` alongside the sibling deps.
 - `.github/workflows/` — CI (`ci.yml`) and the tag-triggered registry publish (`release.yml`).
@@ -18,7 +18,7 @@ No cargo in *this* repo, but the examples pull para/html, whose `dev-native` tie
 
 ## Conventions
 
-- `noeta.lock` files under `examples/` are **not** committed — they are gitignored and regenerate on every run. (The sibling repos' AGENTS.md files claim the opposite; their `.gitignore` and git history agree with this one.)
+- The **package root** `noeta.lock` is committed; `examples/*/noeta.lock` are **not** — they are gitignored and regenerate on every run. (The sibling repos' AGENTS.md files say example locks are committed; their `.gitignore` and git history disagree, and this is the rule.)
 - Markdown never hard-wraps lines.
 - **American English** throughout — code, comments, and docs (`behavior`, not `behaviour`).
 - **Conventional commits** for all commit titles. Commit each green slice as it completes, but **never `git push` without explicit authorization**. Never move a published `v*` tag — a release is a new tag.
@@ -36,4 +36,4 @@ These are the load-bearing decisions; changing one is an architecture change, no
 
 ## CI
 
-`ci.yml` checks and tests every example with a pinned released `noeta` (plus the pinned Rust toolchain, for para/html's dev-native half); `release.yml` publishes the tag to the hosted registry (`noeta publish`, keyless Sigstore provenance via GitHub OIDC). CI goes green once **para/html 0.3.0 is published** and this repo's local-path dep on it is flipped to the registry version — until then the runner cannot resolve it.
+`ci.yml` checks and tests every example with a pinned released `noeta` (plus the pinned Rust toolchain, for para/html's dev-native half); `release.yml` publishes the tag to the hosted registry (`noeta publish`, keyless Sigstore provenance via GitHub OIDC).

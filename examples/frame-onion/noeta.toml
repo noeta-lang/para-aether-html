@@ -5,12 +5,9 @@ version = "0.1.0"
 # The onion is a composition of TWO sibling packages, so an app lists all three under the single
 # `para` scope key as an array (multi-package-per-scope resolution): the web framework, the LiveView
 # engine, and the package that layers one over the other.
-#
-# para/html is on a local path until the `Wake` seam ships in its 0.3.0 — it flips to
-# `{ version = "^0.3", package = "para/html" }` at publish, alongside the other registry deps.
 [dependencies]
 para = [
     { version = "^0.2", package = "para/aether" },
-    { path = "/home/niklas/Code/para/para-html/.claude/worktrees/frame-seam" },
+    { version = "^0.3", package = "para/html" },
     { path = "../.." },
 ]

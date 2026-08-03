@@ -150,3 +150,72 @@ fn main(): void {
 }
 
 main()
+
+// The onion is security machinery, so it is gated by `@test` and not only by the `echo` walkthrough
+// above: CI runs `noeta check` + `noeta test`, never `noeta run`. Each test is self-contained —
+// `noeta test` runs every test in a fresh isolate and never executes top-level statements.
+@test {
+    // The property that lets adopting this package be a no-op for everything except the layers you
+    // asked for. If an empty onion ever diverged from no interceptor, every claim in the README about
+    // `serve` being `handle` plus a stack would be false.
+    fn an_empty_onion_is_indistinguishable_from_no_interceptor(): void {
+        assert(drive([], "e0", false), "a client frame runs with no layers")
+        assert(drive([], "", true), "a tick runs with no layers")
+    }
+
+    // Registration order is outside-in, matching aether's HTTP onion, and layers NEST — an outer
+    // layer's after-phase runs after every inner layer, which is what makes `Trace` able to measure
+    // the whole frame.
+    fn layers_nest_outside_in(): void {
+        trail = signal("")
+        assert(drive([Mark.new("a", trail), Mark.new("b", trail)], "e0", false))
+        assert(trail.get() == ">a>b<b<a", trail.get())
+    }
+
+    // Not calling `next` is how a layer refuses: the work never happens, and neither does any layer
+    // inside it.
+    fn a_layer_that_never_calls_next_stops_the_work_and_everything_inside_it(): void {
+        trail = signal("")
+        assert(!drive([Deny.new(), Mark.new("inner", trail)], "e0", false))
+        assert(trail.get() == "", "a layer inside a refusing one must never run")
+    }
+
+    // Refusal is positional: an outer layer still completes both phases around an inner refusal.
+    fn an_outer_layer_still_runs_around_an_inner_refusal(): void {
+        trail = signal("")
+        assert(!drive([Mark.new("outer", trail), Deny.new()], "e0", false))
+        assert(trail.get() == ">outer<outer", trail.get())
+    }
+
+    // Context threads outward-in, and is scoped to ONE frame — a cache that could outlive the wake
+    // that filled it would have to be invalidated, and nothing on this path could notice.
+    fn frame_context_threads_inward_and_does_not_outlive_the_frame(): void {
+        seen = signal("")
+        assert(drive([Stamp.new(), ReadStamp.new(seen)], "e0", false))
+        assert(seen.get() == "ada", seen.get())
+        fresh = signal("")
+        assert(drive([ReadStamp.new(fresh)], "e0", false))
+        assert(fresh.get() == "<none>", "a second frame must start with an empty context")
+    }
+
+    // The per-action budget drops what is over it, leaves other actions alone, and never touches a
+    // tick.
+    fn a_rate_limit_caps_only_its_own_action(): void {
+        limit = RateLimit.new("e0", 2, 60000)
+        assert(drive([limit], "e0", false), "first frame is in budget")
+        assert(drive([limit], "e0", false), "second frame is in budget")
+        assert(!drive([limit], "e0", false), "third frame is over budget")
+        assert(drive([limit], "e1", false), "a different action is untouched by the cap")
+        assert(drive([limit], "", true), "a tick is never rate-limited")
+    }
+
+    // `Trace` wraps rather than precedes, so what it reports is the frame's real cost.
+    fn trace_reports_every_wake_including_ticks(): void {
+        said = signal("")
+        assert(drive([Trace.new(fn(m: string) => said.set(m))], "e7", false))
+        assert(said.get().starts_with("frame e7 took"), said.get())
+        ticked = signal("")
+        assert(drive([Trace.new(fn(m: string) => ticked.set(m))], "", true))
+        assert(ticked.get().starts_with("tick took"), ticked.get())
+    }
+}

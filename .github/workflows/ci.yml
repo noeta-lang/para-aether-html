@@ -3,10 +3,7 @@ name: CI
 # The para/aether_html package's CI: check + test every example program with a pinned released
 # `noeta`. This package is pure Noeta, but its examples compose para/html, whose dev-native tier-body
 # formatters the composed toolchain cargo-builds — so the pinned Rust toolchain is installed too.
-#
-# NOTE: this goes green once para/html 0.3.0 (the `Wake` seam this package layers over) is published
-# and the pre-publish local-path dep on it is flipped to the registry version. Until then the runner
-# cannot resolve para/html and the resolve step fails by design.
+
 
 on:
   push:

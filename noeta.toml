@@ -20,11 +20,11 @@ keywords = ["liveview", "web", "aether", "middleware", "websocket"]
 # An app opts in by adding `para/aether-html` to the `para` scope it already lists aether (and
 # para/html) under.
 #
-# para/html is on the pre-publish local-path form until the `Wake` seam ships in its 0.3.0 — the same
-# shape para/aether_db carried its siblings in before they were published. It flips to
-# `{ version = "^0.3", package = "para/html" }` at publish; nothing else about this manifest changes.
+# para/html is pinned to ^0.3 because the `Wake` seam this package layers over — `handle_all`'s
+# optional interceptor, and a `Wake` whose fields are readable and whose origin is optional — landed
+# in that release. There is no way to build the onion against 0.2.
 [dependencies]
 para = [
     { version = "^0.2", package = "para/aether" },
-    { path = "/home/niklas/Code/para/para-html/.claude/worktrees/frame-seam" },
+    { version = "^0.3", package = "para/html" },
 ]
