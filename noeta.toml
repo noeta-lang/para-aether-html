@@ -1,6 +1,6 @@
 [package]
 name = "para/aether_html"
-version = "0.1.0"
+version = "0.2.0"
 # The minimum noeta this package works with; enforced at resolve time from noeta 0.2.1 on.
 toolchain = ">=0.3"
 license = "MIT OR Apache-2.0"
@@ -20,11 +20,11 @@ keywords = ["liveview", "web", "aether", "middleware", "websocket"]
 # An app opts in by adding `para/aether-html` to the `para` scope it already lists aether (and
 # para/html) under.
 #
-# para/html is pinned to ^0.3 because the `Wake` seam this package layers over — `handle_all`'s
-# optional interceptor, and a `Wake` whose fields are readable and whose origin is optional — landed
-# in that release. There is no way to build the onion against 0.2.
+# para/html is pinned to ^0.4: the `Wake` seam this package layers over landed in 0.3, and 0.4 both
+# collapsed the entry points into one `handle` with named arguments and added the `base:` mounting
+# this package's `LiveMount` is built on.
 [dependencies]
 para = [
     { version = "^0.2", package = "para/aether" },
-    { version = "^0.3", package = "para/html" },
+    { version = "^0.4", package = "para/html" },
 ]
