@@ -4,8 +4,8 @@ Guidance for coding agents working in this repo — the standalone repo of the *
 
 ## Repo layout
 
-- `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is pinned to `^0.3`: the `Wake` seam this package layers over landed in that release, and there is no way to build the onion against 0.2.
-- `aether_html.noe` — the whole surface: the `Frame`/`FrameMiddleware`/`FrameNext` onion, `onion`/`serve`/`serve_all`, and the three shipped layers (`Authorize`, `RateLimit`, `Trace`).
+- `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is pinned to `^0.4`: the `Wake` seam landed in 0.3, and 0.4 collapsed the entry points into one `handle` with named arguments and added the `base:` mounting `LiveMount` is built on.
+- `aether_html.noe` — the whole surface: the `Frame`/`FrameMiddleware`/`FrameNext` onion, `onion`/`serve`, the `LiveMount` aether middleware, and the three shipped layers (`Authorize`, `RateLimit`, `Trace`).
 - `examples/*/` — each a standalone package depending on this repo via `{ path = "../.." }` alongside the sibling deps.
 - `.github/workflows/` — CI (`ci.yml`) and the tag-triggered registry publish (`release.yml`).
 

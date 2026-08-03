@@ -8,8 +8,9 @@
 // `handle_all` receives, so what runs here is the production path with a synthetic frame at the top
 // rather than a socket.
 use para.aether_html
-use para.aether_html.{Frame, FrameMiddleware, FrameNext, RateLimit, Trace, onion}
+use para.aether_html.{Frame, FrameMiddleware, FrameNext, LiveMount, RateLimit, Trace, onion}
 use para.html
+use para.html.{render, Html}
 use std.reactive.signal
 
 // A layer that records the order it saw a frame in, then continues — enough to prove the onion
@@ -70,6 +71,12 @@ class ReadStamp {
             next.run(f)
         }
     }
+}
+
+// A page the mount tests can name. They never render it — a mount's routing decision is made before
+// anything is rendered — so an empty template is the honest stand-in.
+fn page_stub(): Html {
+    return @html { <p>stub</p> }
 }
 
 // Run one synthetic frame through a stack, reporting whether the work at the bottom ran.
@@ -207,6 +214,30 @@ main()
         assert(!drive([limit], "e0", false), "third frame is over budget")
         assert(drive([limit], "e1", false), "a different action is untouched by the cap")
         assert(drive([limit], "", true), "a tick is never rate-limited")
+    }
+
+    // A mount answers exactly its own three URLs and falls through for everything else. The
+    // middleware itself needs a live request, so what is asserted here is the DECISION — which is the
+    // part with a rule in it — and it delegates to para/html's `serves`, so this test fails if that
+    // package ever changes what a mount owns.
+    fn a_mount_claims_exactly_its_own_urls(): void {
+        m = LiveMount.new("/todos", "Todos", page_stub, [])
+        assert(m.claims("/todos"), "the page itself")
+        assert(m.claims("/todos/ws"), "its socket")
+        assert(m.claims("/todos/live.js"), "its shim")
+        assert(!m.claims("/"), "a mount must not claim the root")
+        assert(!m.claims("/api/users"), "a mount must not claim a sibling route")
+        assert(!m.claims("/chat/ws"), "a mount must not claim another mount's socket")
+    }
+
+    // Two mounts in one app must not shadow each other, including when one prefix is a string-prefix
+    // of the other.
+    fn two_mounts_in_one_app_do_not_overlap(): void {
+        todos = LiveMount.new("/todos", "Todos", page_stub, [])
+        to = LiveMount.new("/to", "To", page_stub, [])
+        assert(!to.claims("/todos"), "prefix matching must be segment-exact, not substring")
+        assert(!todos.claims("/to"))
+        assert(to.claims("/to/ws") && !todos.claims("/to/ws"))
     }
 
     // `Trace` wraps rather than precedes, so what it reports is the frame's real cost.
