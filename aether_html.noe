@@ -37,18 +37,18 @@ pub struct Frame {
     ctx: Signal<Map<string, string>>
 
     // The handler id the client named — `""` on a tick.
-    fn name(): string {
+    pub fn name(): string {
         return self.wake.name
     }
 
     // The payload the client sent — `""` on a tick. Already past para/html's unconditional size cap.
-    fn value(): string {
+    pub fn value(): string {
         return self.wake.value
     }
 
     // Whether this wake is the session's own idle tick rather than a client frame. Authorization
     // layers should pass a tick through: there is no client behind it to authorize.
-    fn tick(): bool {
+    pub fn tick(): bool {
         return self.wake.tick
     }
 
@@ -56,17 +56,17 @@ pub struct Frame {
     // builds one without a request, so a stack of layers can be driven with no socket). What a layer
     // reads a cookie or a header off — see `Authorize` for why the *store* behind it decides whether
     // mid-session revocation lands, and for what absence has to mean.
-    fn origin(): ?Request {
+    pub fn origin(): ?Request {
         return self.wake.origin
     }
 
     // Read a value an outer layer left, or `fallback` if none did.
-    fn get(key: string, fallback: string): string {
+    pub fn get(key: string, fallback: string): string {
         return self.ctx.get().get_or(key, fallback)
     }
 
     // Leave a value for the layers inside this one.
-    fn set(key: string, value: string): void {
+    pub fn set(key: string, value: string): void {
         self.ctx.set(self.ctx.get().set(key, value))
     }
 }
@@ -104,7 +104,7 @@ pub struct FrameNext {
 
     // Continue inward. Calling this is what makes a layer transparent; NOT calling it is what makes
     // a layer refuse — the frame's work simply never happens and the page stays as it was.
-    fn run(f: Frame): void {
+    pub fn run(f: Frame): void {
         if self.index >= self.stack.len() {
             self.proceed()
         } else {
@@ -195,7 +195,7 @@ pub class LiveMount {
     // Mount `render_page` at `base` (`"/todos"` serves `/todos`, `/todos/ws`, `/todos/live.js`).
     // Mounting at `""` would make the page the app's catch-all, which is what standalone `serve` is
     // for — pass a real prefix here.
-    fn new(
+    pub fn new(
         base: string,
         title: string,
         render_page: () -> Html,
@@ -221,12 +221,12 @@ pub class LiveMount {
     //
     // Delegates to `para.html.serves` rather than restating the rule, so a mount and the page it
     // mounts cannot disagree about where the page lives.
-    fn claims(path: string): bool {
+    pub fn claims(path: string): bool {
         return serves(self.base, path)
     }
 
     impl Middleware {
-        fn handle(req: Request, next: Next): Response {
+        pub fn handle(req: Request, next: Next): Response {
             if !self.claims(req.path()) {
                 return next.run(req)
             }
@@ -269,7 +269,7 @@ pub class Authorize {
     sessions: dyn SessionStore
     may_act: (Session, Frame) -> bool
 
-    fn new(sessions: dyn SessionStore, may_act: (Session, Frame) -> bool): Authorize {
+    pub fn new(sessions: dyn SessionStore, may_act: (Session, Frame) -> bool): Authorize {
         return Authorize { sessions: sessions, may_act: may_act }
     }
 
@@ -286,7 +286,7 @@ pub class Authorize {
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {
+        pub fn handle(f: Frame, next: FrameNext): void {
             // A tick passes: no client behind it to authorize. A frame with no request behind it
             // fails CLOSED — a live socket always has one, so absence is the browserless path, and a
             // security layer that waved frames through whenever it could not identify the caller
@@ -320,7 +320,7 @@ pub class RateLimit {
     window_start: Signal<int>
     used: Signal<int>
 
-    fn new(action: string, budget: int, window_ms: int): RateLimit {
+    pub fn new(action: string, budget: int, window_ms: int): RateLimit {
         return RateLimit {
             action: action,
             budget: budget,
@@ -331,7 +331,7 @@ pub class RateLimit {
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {
+        pub fn handle(f: Frame, next: FrameNext): void {
             if f.tick() || f.name() != self.action {
                 next.run(f)
             } else {
@@ -360,12 +360,12 @@ pub class RateLimit {
 pub class Trace {
     sink: (string) -> void
 
-    fn new(sink: (string) -> void): Trace {
+    pub fn new(sink: (string) -> void): Trace {
         return Trace { sink: sink }
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {
+        pub fn handle(f: Frame, next: FrameNext): void {
             started = datetime.now().unix_ms()
             next.run(f)
             took = datetime.now().unix_ms() - started

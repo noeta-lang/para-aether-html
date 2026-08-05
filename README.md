@@ -48,13 +48,22 @@ The same rule `para/aether_db` states for the session store, applied to the othe
 ```toml
 [dependencies]
 para = [
-    { version = "^0.2", package = "para/aether" },
-    { version = "^0.4", package = "para/html" },
-    { version = "^0.2", package = "para/aether_html" },   # <- add this
+    { version = "^0.4", package = "para/aether" },
+    { version = "^0.5", package = "para/html" },
+    { version = "^0.3", package = "para/aether_html" },   # <- add this
 ]
+
+# A tier is bound, never imported: this table is what makes `@html { … }` an expression in the page
+# you hand to `serve` or `LiveMount`. Add `css = "para/html"` too if you write `@css { … }` sheets.
+# The binding names the PACKAGE, not the `para` key — that key is a scope array covering three
+# members and cannot say which one you meant.
+[directives]
+html = "para/html"
 ```
 
 Pure Noeta on both sides — no `[trust]` entry needed.
+
+The tier comes from that binding and from nothing else. `use para.html.{render, Html, on_click}` brings the *functions* into scope, as it always did, but since noeta 0.5 it no longer enables `@html` — a page whose manifest lacks the binding fails on the block, not on the import. Both lines are wanted: the import for the surface you call, the binding for the tier you write.
 
 ## Usage
 
@@ -79,6 +88,25 @@ fn fetch(req: Request): Response {
 ```
 
 The first layer registered is the outermost — it sees the frame first and finishes last, exactly as aether's first middleware sees the request first.
+
+Writing your own layer is one `impl`, and its `handle` must be **`pub`** — a trait is an outward contract, and since noeta 0.5 a method that implements one has to say so (`E0015` names it if you forget):
+
+```noeta ignore
+class Audit {
+    pub fn new(): Audit {
+        return Audit {}
+    }
+
+    impl FrameMiddleware {
+        pub fn handle(f: Frame, next: FrameNext): void {
+            if !f.tick() {
+                log.info("frame ${f.name()} from ${f.get("identity", "?")}")
+            }
+            next.run(f)          // not calling this is how a layer refuses
+        }
+    }
+}
+```
 
 ## Mounting into an aether app
 

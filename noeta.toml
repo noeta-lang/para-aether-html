@@ -1,8 +1,8 @@
 [package]
 name = "para/aether_html"
-version = "0.2.0"
+version = "0.3.0"
 # The minimum noeta this package works with; enforced at resolve time from noeta 0.2.1 on.
-toolchain = ">=0.3"
+toolchain = ">=0.5"
 license = "MIT OR Apache-2.0"
 description = "The per-frame onion for para/html LiveView pages — authorization, rate limiting, and tracing per websocket frame, in aether's vocabulary."
 keywords = ["liveview", "web", "aether", "middleware", "websocket"]
@@ -20,11 +20,14 @@ keywords = ["liveview", "web", "aether", "middleware", "websocket"]
 # An app opts in by adding `para/aether-html` to the `para` scope it already lists aether (and
 # para/html) under.
 #
-# para/html is pinned to ^0.4: the `Wake` seam this package layers over landed in 0.3, and 0.4 both
-# collapsed the entry points into one `handle` with named arguments and added the `base:` mounting
-# this package's `LiveMount` is built on.
+# para/html is pinned to ^0.5 and para/aether to ^0.4 — both are the noeta-0.5 releases, in which a
+# method that implements a trait must be `pub`. That rule crosses the package boundary: this package
+# reaches para/html through `Wake` and `handle` and aether through `Middleware` and `SessionStore`,
+# so it needs the versions that publish them. The floors also still carry what they always did — the
+# `Wake` seam landed in para/html 0.3, and 0.4 collapsed the entry points into one `handle` with
+# named arguments and added the `base:` mounting this package's `LiveMount` is built on.
 [dependencies]
 para = [
-    { version = "^0.2", package = "para/aether" },
-    { version = "^0.4", package = "para/html" },
+    { version = "^0.4", package = "para/aether" },
+    { version = "^0.5", package = "para/html" },
 ]
