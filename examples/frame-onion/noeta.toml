@@ -7,7 +7,14 @@ version = "0.1.0"
 # engine, and the package that layers one over the other.
 [dependencies]
 para = [
-    { version = "^0.2", package = "para/aether" },
-    { version = "^0.4", package = "para/html" },
+    { version = "^0.4", package = "para/aether" },
+    { version = "^0.5", package = "para/html" },
     { path = "../.." },
 ]
+
+# The `@html { … }` tier directive this demo writes (`page_stub`). A tier is BOUND, never imported:
+# `use para.html` no longer enables `@html`, and the binding — naming the PACKAGE, since the `para`
+# key is a scope array covering three members and cannot say which one was meant — is what links
+# para/html's tier handler into this program.
+[directives]
+html = "para/html"

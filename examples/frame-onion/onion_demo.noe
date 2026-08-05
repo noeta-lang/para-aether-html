@@ -19,12 +19,12 @@ class Mark {
     label: string
     trail: Signal<string>
 
-    fn new(label: string, trail: Signal<string>): Mark {
+    pub fn new(label: string, trail: Signal<string>): Mark {
         return Mark { label: label, trail: trail }
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {
+        pub fn handle(f: Frame, next: FrameNext): void {
             self.trail.set("${self.trail.get()}>${self.label}")
             next.run(f)
             self.trail.set("${self.trail.get()}<${self.label}")
@@ -35,23 +35,23 @@ class Mark {
 // A layer that refuses every client frame by never calling `next` — the shape every authorization
 // layer bottoms out in.
 class Deny {
-    fn new(): Deny {
+    pub fn new(): Deny {
         return Deny {}
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {}
+        pub fn handle(f: Frame, next: FrameNext): void {}
     }
 }
 
 // A layer that leaves a value for the layers inside it, proving the per-frame context threads.
 class Stamp {
-    fn new(): Stamp {
+    pub fn new(): Stamp {
         return Stamp {}
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {
+        pub fn handle(f: Frame, next: FrameNext): void {
             f.set("who", "ada")
             next.run(f)
         }
@@ -61,12 +61,12 @@ class Stamp {
 class ReadStamp {
     seen: Signal<string>
 
-    fn new(seen: Signal<string>): ReadStamp {
+    pub fn new(seen: Signal<string>): ReadStamp {
         return ReadStamp { seen: seen }
     }
 
     impl FrameMiddleware {
-        fn handle(f: Frame, next: FrameNext): void {
+        pub fn handle(f: Frame, next: FrameNext): void {
             self.seen.set(f.get("who", "<none>"))
             next.run(f)
         }
