@@ -4,7 +4,7 @@ Guidance for coding agents working in this repo — the standalone repo of the *
 
 ## Repo layout
 
-- `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is pinned to `^0.4`: the `Wake` seam landed in 0.3, and 0.4 collapsed the entry points into one `handle` with named arguments and added the `base:` mounting `LiveMount` is built on.
+- `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is pinned to `^0.6`: the `Wake` seam landed in 0.3, 0.4 collapsed the entry points into one `handle` with named arguments and added the `base:` mounting `LiveMount` is built on, and 0.6 is where a mount at the root claims the page's three URLs instead of every path and the served document tells the shim which socket to open. `LiveMount` is only correct against 0.6 — against 0.5 a root mount swallows the app's other routes.
 - `aether_html.noe` — the whole surface: the `Frame`/`FrameMiddleware`/`FrameNext` onion, `onion`/`serve`, the `LiveMount` aether middleware, and the three shipped layers (`Authorize`, `RateLimit`, `Trace`).
 - `examples/*/` — each a standalone package depending on this repo via `{ path = "../.." }` alongside the sibling deps.
 - `.github/workflows/` — CI (`ci.yml`) and the tag-triggered registry publish (`release.yml`).
@@ -14,6 +14,7 @@ Guidance for coding agents working in this repo — the standalone repo of the *
 No cargo in *this* repo, but the examples pull para/html, whose `dev-native` tier-body formatters the composed toolchain cargo-builds — so running them needs both the `noeta` binary and a Rust toolchain on `PATH`. (Those formatters are dev-only and trust-free; they contribute nothing at run time and need no `[trust]` entry from a consumer.)
 
 - `noeta check <file>.noe` / `noeta test <file>.noe` in each `examples/*` directory is the test suite.
+- `mounted-page` is the routing exercise: a root mount and a prefixed one in a single app, beside a controller whose `/health` and `/api/count` have to survive both. It is also the file to read when asking what an app's entry point should look like — `fn fetch` hands everything to `app.route` and names no LiveView URL.
 - `frame-onion` is the browserless exercise of the onion — runnable with `noeta run`, and the place any new layer earns its test. It drives `onion(layers)`, the same interceptor the server path uses, over a hand-built `para.html.wake`. **A layer whose only exercise is a live websocket is a layer nobody tests**; do not add one without a case here.
 
 ## Conventions

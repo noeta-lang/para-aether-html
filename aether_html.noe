@@ -147,7 +147,7 @@ pub fn serve(
     req: Request,
     title: string,
     render_page: () -> Html,
-    layers: List<dyn FrameMiddleware>,
+    layers: List<dyn FrameMiddleware> = [],
     every_ms: int = 500,
     on_tick: () -> void = fn() {},
     styles: ?Css = none,
@@ -175,6 +175,18 @@ pub fn serve(
 // that answers without calling `next` IS a mount. `app.use_middleware(LiveMount.new(…))` and the
 // page is live at its prefix; every other path falls through untouched.
 //
+// This is what an app's entry point looks like once the page is mounted — the whole of it, with no
+// LiveView URL written anywhere in the app's own code:
+//
+//     app.use_middleware(LiveMount.new("/", "Todos", page, on_tick: refresh))
+//
+//     fn fetch(req: Request) use (app): Response {
+//         return app.route(req)
+//     }
+//
+// The alternative it replaces was three path literals in a hand-written `if` — `/`, `/ws` and
+// `/live.js` — kept in step by the author rather than by the package that owns them.
+//
 // The result is two nested onions, which is the honest picture. aether's HTTP onion runs once, on the
 // upgrade — that is where CORS, logging, and connect-time auth belong. The frame onion runs on every
 // wake for the life of the socket — that is where per-frame authorization, budgets, and tracing
@@ -193,13 +205,22 @@ pub class LiveMount {
     styles: ?Css
 
     // Mount `render_page` at `base` (`"/todos"` serves `/todos`, `/todos/ws`, `/todos/live.js`).
-    // Mounting at `""` would make the page the app's catch-all, which is what standalone `serve` is
-    // for — pass a real prefix here.
+    //
+    // `"/"` — equivalently `""` — mounts at the **root**, serving `/`, `/ws`, and `/live.js` and
+    // nothing else, so an app whose live page is its home page still routes `/health` and `/api/…`
+    // to the controllers beside it. That is the arrangement most apps want and the one that used to
+    // be inexpressible: para/html's `serves` claimed every path at the root, so a root mount
+    // swallowed the whole app and the alternative, `base: "/"`, built URLs like `//ws`. Both are
+    // fixed in para/html 0.6, which is why this package's floor moved with it.
+    //
+    // `layers` defaults to none, because the mount is worth having on its own: it is what puts the
+    // page's URLs under the router instead of in the app's `fetch`, and an app with no per-frame
+    // policy to enforce should not have to pass `[]` to say so.
     pub fn new(
         base: string,
         title: string,
         render_page: () -> Html,
-        layers: List<dyn FrameMiddleware>,
+        layers: List<dyn FrameMiddleware> = [],
         every_ms: int = 500,
         on_tick: () -> void = fn() {},
         styles: ?Css = none,
@@ -242,6 +263,42 @@ pub class LiveMount {
             )
         }
     }
+}
+
+// A page with nothing in it — enough to build a mount, which is all the routing tests need.
+fn empty_page(): Html {
+    return Html { skeleton: "", holes: [], ids: [], handlers: {}, regions: [] }
+}
+
+// The mount an app puts on its home page: the live page's three URLs, and not one path more. Every
+// other request falls through to the router, which is what makes `/health` and `/api/…` reachable
+// in an app whose front page is a LiveView.
+@test fn a_root_mount_claims_the_live_urls_and_falls_through_the_rest(): void {
+    for base in ["/", ""] {
+        m = LiveMount.new(base, "Todos", empty_page)
+        assert(m.claims("/"))
+        assert(m.claims("/ws"))
+        assert(m.claims("/live.js"))
+        assert(!m.claims("/health"))
+        assert(!m.claims("/api/todos"))
+    }
+}
+
+@test fn a_prefixed_mount_stays_inside_its_prefix(): void {
+    m = LiveMount.new("/todos", "Todos", empty_page)
+    assert(m.claims("/todos"))
+    assert(m.claims("/todos/ws"))
+    assert(m.claims("/todos/live.js"))
+    assert(!m.claims("/"))
+    assert(!m.claims("/ws"), "the unprefixed socket belongs to whatever is mounted at the root")
+    assert(!m.claims("/api/todos"))
+}
+
+// Mounting takes no layers: the mount earns its place by moving the page's URLs under the router,
+// and an app with no per-frame policy should not have to say `[]` to get that.
+@test fn a_mount_needs_no_layers(): void {
+    m = LiveMount.new("/todos", "Todos", empty_page)
+    assert(m.layers.len() == 0)
 }
 
 // --- Layers. ------------------------------------------------------------------------------------

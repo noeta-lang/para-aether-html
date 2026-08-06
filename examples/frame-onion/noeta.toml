@@ -8,7 +8,7 @@ version = "0.1.0"
 [dependencies]
 para = [
     { version = "^0.4", package = "para/aether" },
-    { version = "^0.5", package = "para/html" },
+    { version = "^0.6", package = "para/html" },
     { path = "../.." },
 ]
 

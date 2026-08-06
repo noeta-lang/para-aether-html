@@ -31,7 +31,7 @@ One pure-Noeta module, `para.aether_html`:
 | `Frame` | struct | one wake in flight: para/html's `Wake` plus the per-frame context layers share |
 | `onion(layers)` | fn | compose a stack into the interceptor `para.html.handle`'s `intercept:` takes |
 | `serve(req, title, page, layers, …)` | fn | the drop-in replacement for `para.html.handle`, with the onion around every wake |
-| `LiveMount` | class, `impl Middleware` | mount a page into an aether `App` at a prefix, beside its other routes |
+| `LiveMount` | class, `impl Middleware` | mount a page into an aether `App` — at a prefix or at the root — beside its other routes |
 | `Authorize` | class, `impl FrameMiddleware` | resolve the session per frame and put it to the app's policy |
 | `RateLimit` | class, `impl FrameMiddleware` | cap one named action to a budget per window |
 | `Trace` | class, `impl FrameMiddleware` | report each frame and what it cost, to a sink of your choosing |
@@ -49,8 +49,8 @@ The same rule `para/aether_db` states for the session store, applied to the othe
 [dependencies]
 para = [
     { version = "^0.4", package = "para/aether" },
-    { version = "^0.5", package = "para/html" },
-    { version = "^0.3", package = "para/aether_html" },   # <- add this
+    { version = "^0.6", package = "para/html" },
+    { version = "^0.4", package = "para/aether_html" },   # <- add this
 ]
 
 # A tier is bound, never imported: this table is what makes `@html { … }` an expression in the page
@@ -123,9 +123,23 @@ app.serve(8080)
 
 The page is live at `/todos`, its socket at `/todos/ws`, its shim at `/todos/live.js`; everything else falls through to the rest of the app untouched.
 
+### The live page as the home page
+
+`LiveMount.new("/", …)` mounts at the **root**, serving `/`, `/ws`, and `/live.js` while `/health` and `/api/…` keep going to the controllers. That is what most apps actually want, and it is the whole of the wiring — `layers` is optional, so a page with no per-frame policy does not pass `[]` to say so:
+
+```noeta ignore
+app.use_middleware(LiveMount.new("/", "Todos", page, on_tick: refresh))
+
+fn fetch(req: Request) use (app): Response {
+    return app.route(req)
+}
+```
+
+What that replaces is an app routing the LiveView by hand in its own `fetch` — `if path == "/" || path == "/ws" || path == "/live.js"` — three path literals in application code, kept in step with the package that serves them by nothing but attention. It needed writing because para/html 0.5's `serves` claimed *every* path at the root, so a root mount swallowed the app, and the other spelling, `base: "/"`, built `//ws`. para/html 0.6 fixes both, which is why this package's floor is `^0.6`. [`examples/mounted-page/`](examples/mounted-page) is the arrangement end to end: a root mount, a prefixed second mount, and a controller whose routes survive both.
+
 **A middleware rather than a route**, for two reasons. aether's routes dispatch to reflected controller methods and a page is a closure. And the onion already has exactly the right shape — a layer that answers without calling `next` *is* a mount.
 
-Which paths belong to the mount is `para.html.serves`, not a predicate of this package's own: one rule, read by para/html's routing and by this gate, so a mount and the page it mounts cannot disagree about where the page lives. Matching is segment-exact, so a `/to` mount does not claim `/todos`.
+Which paths belong to the mount is `para.html.serves`, not a predicate of this package's own: one rule, read by para/html's routing and by this gate, so a mount and the page it mounts cannot disagree about where the page lives. Matching is segment-exact, so a `/to` mount does not claim `/todos`, and a mount claims exactly its three URLs at every base including the root.
 
 ### Two nested onions
 

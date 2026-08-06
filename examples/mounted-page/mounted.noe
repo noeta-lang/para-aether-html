@@ -1,0 +1,99 @@
+// A LiveView page mounted at the root of an aether app — the arrangement most apps want, and the
+// one that used to be impossible to express: the live page IS the home page, and the router keeps
+// its own routes beside it.
+//
+//   noeta serve mounted.noe        →  http://localhost:8080  (the live page)
+//                                     http://localhost:8080/health  (the controller)
+//
+// The point of the file is what is NOT in it. No LiveView URL is written here: `/`, `/ws`, and
+// `/live.js` belong to `LiveMount`, which claims them and lets everything else fall through to the
+// router. An app that routed the page by hand had to spell those three paths in its own `fetch` and
+// keep them in step with the package that serves them.
+use para.aether.{App, Get}
+use para.aether_html.LiveMount
+use para.html.{render, Html, on_click}
+use std.reactive.signal
+use std.http.{Request, Response}
+
+count = signal(0)
+
+fn page() use (count): Html {
+    return @html {
+        <h1>count: <b>${count.get()}</b></h1>
+        <button ${on_click(fn() => count.update(fn(n) => n + 1))}>+1</button>
+    }
+}
+
+// The controller method delegates here because a *named* function is what can capture a top-level
+// binding with `use (…)` — the same shape the page uses to reach the same signal.
+fn current_count() use (count): int {
+    return count.get()
+}
+
+// The non-live surface: an ordinary controller, discovered by reflection off its route attributes.
+// Every one of its paths has to survive the mount sitting in front of it.
+class StatusController {
+    pub fn new(): StatusController {
+        return StatusController {}
+    }
+
+    #[Get("/health")]
+    fn health(): string {
+        return "ok"
+    }
+
+    #[Get("/api/count")]
+    fn api_count(): int {
+        return current_count()
+    }
+}
+
+app = App.new()
+app.register("StatusController", StatusController.new())
+app.discover()
+
+// The mount is a middleware: it answers the page's three URLs and calls `next` for everything else.
+// Registering it is the whole of the wiring.
+app.use_middleware(LiveMount.new("/", "Mounted counter", page))
+
+// A second mount, under a prefix, over the same page. It serves `/counter`, `/counter/ws`, and
+// `/counter/live.js` — and the document it renders points its shim at `/counter/ws`, not at the root
+// socket the first mount owns. Two live pages in one app is the case that makes that concrete: with a
+// client-side `/ws` default, every mounted page would drive the root's session instead of its own.
+app.use_middleware(LiveMount.new("/counter", "Counter under a prefix", page))
+
+// `noeta serve` drives this. It knows nothing about LiveView.
+fn fetch(req: Request) use (app): Response {
+    return app.route(req)
+}
+
+// --- Tests ----------------------------------------------------------------------------------------
+
+// The mount's half of the split: three URLs, and nothing that belongs to the router.
+@test fn the_mount_claims_the_page_and_leaves_the_routes(): void {
+    m = LiveMount.new("/", "Mounted counter", page)
+    assert(m.claims("/"))
+    assert(m.claims("/ws"))
+    assert(m.claims("/live.js"))
+    assert(!m.claims("/health"))
+    assert(!m.claims("/api/count"))
+}
+
+// The router's half: the controller still answers under a root mount. `app.handle` is the
+// string-testable dispatch — no server, no socket.
+@test fn the_routes_still_answer_under_a_root_mount() use (app): void {
+    assert(app.handle("GET", "/health", "") == "ok")
+    assert(app.handle("GET", "/api/count", "") == "0")
+}
+
+// Two mounts in one app divide the URL space between them, with neither claiming the other's socket.
+// A prefixed page whose shim connected to the root's `/ws` — what a client-side default gives you —
+// would silently drive the wrong session.
+@test fn two_mounts_keep_their_own_sockets(): void {
+    root = LiveMount.new("/", "Mounted counter", page)
+    prefixed = LiveMount.new("/counter", "Counter under a prefix", page)
+    assert(root.claims("/ws"))
+    assert(!root.claims("/counter/ws"))
+    assert(prefixed.claims("/counter/ws"))
+    assert(!prefixed.claims("/ws"))
+}

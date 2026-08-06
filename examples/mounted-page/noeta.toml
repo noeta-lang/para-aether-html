@@ -1,0 +1,17 @@
+[package]
+name = "noeta/mounted_page"
+version = "0.1.0"
+
+# The three packages an app with a live page and a router needs, under one `para` scope key: the web
+# framework, the LiveView engine, and this package, which mounts one inside the other.
+[dependencies]
+para = [
+    { version = "^0.4", package = "para/aether" },
+    { version = "^0.6", package = "para/html" },
+    { path = "../.." },
+]
+
+# The `@html { … }` tier this demo writes. A tier is BOUND, never imported, and the binding names the
+# package rather than the `para` key, which here covers three members and cannot say which was meant.
+[directives]
+html = "para/html"

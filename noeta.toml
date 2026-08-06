@@ -1,6 +1,6 @@
 [package]
 name = "para/aether_html"
-version = "0.3.0"
+version = "0.4.0"
 # The minimum noeta this package works with; enforced at resolve time from noeta 0.2.1 on.
 toolchain = ">=0.5"
 license = "MIT OR Apache-2.0"
@@ -20,14 +20,17 @@ keywords = ["liveview", "web", "aether", "middleware", "websocket"]
 # An app opts in by adding `para/aether-html` to the `para` scope it already lists aether (and
 # para/html) under.
 #
-# para/html is pinned to ^0.5 and para/aether to ^0.4 — both are the noeta-0.5 releases, in which a
-# method that implements a trait must be `pub`. That rule crosses the package boundary: this package
-# reaches para/html through `Wake` and `handle` and aether through `Middleware` and `SessionStore`,
-# so it needs the versions that publish them. The floors also still carry what they always did — the
-# `Wake` seam landed in para/html 0.3, and 0.4 collapsed the entry points into one `handle` with
-# named arguments and added the `base:` mounting this package's `LiveMount` is built on.
+# para/html is pinned to ^0.6 and para/aether to ^0.4. The aether floor is the noeta-0.5 release, in
+# which a method that implements a trait must be `pub` — a rule that crosses the package boundary,
+# since this package reaches aether through `Middleware` and `SessionStore`. The para/html floor is
+# 0.6 because `LiveMount` is only correct against it: 0.6 is where a mount at the root claims the
+# page's three URLs instead of every path, and where the served document tells the shim which socket
+# to open, so a mount under a prefix actually connects. Against 0.5 a root mount silently swallows
+# the app's other routes. The floor also still carries what it always did — the `Wake` seam landed in
+# para/html 0.3, and 0.4 collapsed the entry points into one `handle` with named arguments and added
+# the `base:` mounting this package's `LiveMount` is built on.
 [dependencies]
 para = [
     { version = "^0.4", package = "para/aether" },
-    { version = "^0.5", package = "para/html" },
+    { version = "^0.6", package = "para/html" },
 ]
