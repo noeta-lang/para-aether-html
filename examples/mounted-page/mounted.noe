@@ -10,7 +10,7 @@
 // router. An app that routed the page by hand had to spell those three paths in its own `fetch` and
 // keep them in step with the package that serves them.
 use para.aether.{App, Get}
-use para.aether_html.{LiveMount, mount}
+use para.aether_html.LiveMount
 use para.html.{render, Html, on_click}
 use std.reactive.signal
 use std.http.{Request, Response}
@@ -54,13 +54,13 @@ app.discover()
 
 // The mount is a middleware: it answers the page's three URLs and calls `next` for everything else.
 // Registering it is the whole of the wiring.
-app.use_middleware(mount("/", "Mounted counter", page))
+app.use_middleware(LiveMount.new("/", "Mounted counter", page))
 
 // A second mount, under a prefix, over the same page. It serves `/counter`, `/counter/ws`, and
 // `/counter/live.js` — and the document it renders points its shim at `/counter/ws`, not at the root
 // socket the first mount owns. Two live pages in one app is the case that makes that concrete: with a
 // client-side `/ws` default, every mounted page would drive the root's session instead of its own.
-app.use_middleware(mount("/counter", "Counter under a prefix", page))
+app.use_middleware(LiveMount.new("/counter", "Counter under a prefix", page))
 
 // `noeta serve` drives this. It knows nothing about LiveView.
 fn fetch(req: Request) use (app): Response {

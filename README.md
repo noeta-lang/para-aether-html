@@ -31,7 +31,6 @@ One pure-Noeta module, `para.aether_html`:
 | `Frame` | struct | one wake in flight: para/html's `Wake` plus the per-frame context layers share |
 | `onion(layers)` | fn | compose a stack into the interceptor `para.html.handle`'s `intercept:` takes |
 | `serve(req, title, page, layers, …)` | fn | the drop-in replacement for `para.html.handle`, with the onion around every wake |
-| `mount(base, title, page, …)` | fn | build a `LiveMount` with its optional knobs named — the door to reach for |
 | `LiveMount` | class, `impl Middleware` | mount a page into an aether `App` — at a prefix or at the root — beside its other routes |
 | `Authorize` | class, `impl FrameMiddleware` | resolve the session per frame and put it to the app's policy |
 | `RateLimit` | class, `impl FrameMiddleware` | cap one named action to a budget per window |
@@ -126,10 +125,10 @@ The page is live at `/todos`, its socket at `/todos/ws`, its shim at `/todos/liv
 
 ### The live page as the home page
 
-`mount("/", …)` mounts at the **root**, serving `/`, `/ws`, and `/live.js` while `/health` and `/api/…` keep going to the controllers. That is what most apps actually want, and it is the whole of the wiring — `layers` is optional, so a page with no per-frame policy does not pass `[]` to say so:
+`LiveMount.new("/", …)` mounts at the **root**, serving `/`, `/ws`, and `/live.js` while `/health` and `/api/…` keep going to the controllers. That is what most apps actually want, and it is the whole of the wiring — `layers` is optional, so a page with no per-frame policy does not pass `[]` to say so:
 
 ```noeta ignore
-app.use_middleware(mount("/", "Todos", page, on_tick: refresh))
+app.use_middleware(LiveMount.new("/", "Todos", page, on_tick: refresh))
 
 fn fetch(req: Request) use (app): Response {
     return app.route(req)
