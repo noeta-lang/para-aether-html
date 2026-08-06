@@ -178,7 +178,7 @@ pub fn serve(
 // This is what an app's entry point looks like once the page is mounted — the whole of it, with no
 // LiveView URL written anywhere in the app's own code:
 //
-//     app.use_middleware(LiveMount.new("/", "Todos", page, on_tick: refresh))
+//     app.use_middleware(mount("/", "Todos", page, on_tick: refresh))
 //
 //     fn fetch(req: Request) use (app): Response {
 //         return app.route(req)
@@ -265,6 +265,32 @@ pub class LiveMount {
     }
 }
 
+// Build a mount with its knobs named — the door to prefer at a call site:
+//
+//     app.use_middleware(mount("/", "Todos", page, on_tick: refresh))
+//
+// A free function rather than more arguments on `LiveMount.new`, for a reason that is the toolchain's
+// and not this package's: a **label binds on a call to a function, and is silently ignored on a call
+// to a method**. `LiveMount.new("/", "Todos", page, on_tick: refresh)` does not fail — it binds
+// `refresh` to `layers` positionally and reports a type error naming a parameter the author never
+// wrote. Until that is fixed, an API whose optional knobs are meant to be named cannot be a
+// constructor. para/html's `handle` is a free function for the same reason, which is why its
+// `every_ms:`/`on_tick:`/`styles:` work.
+//
+// `LiveMount.new` remains, and is what this calls; positional construction is fine when there is
+// nothing optional to say.
+pub fn mount(
+    base: string,
+    title: string,
+    render_page: () -> Html,
+    layers: List<dyn FrameMiddleware> = [],
+    every_ms: int = 500,
+    on_tick: () -> void = fn() {},
+    styles: ?Css = none,
+): LiveMount {
+    return LiveMount.new(base, title, render_page, layers, every_ms, on_tick, styles)
+}
+
 // A page with nothing in it — enough to build a mount, which is all the routing tests need.
 fn empty_page(): Html {
     return Html { skeleton: "", holes: [], ids: [], handlers: {}, regions: [] }
@@ -299,6 +325,19 @@ fn empty_page(): Html {
 @test fn a_mount_needs_no_layers(): void {
     m = LiveMount.new("/todos", "Todos", empty_page)
     assert(m.layers.len() == 0)
+}
+
+// The named-argument door builds the same mount, with the knobs an app actually reaches for bound by
+// name and everything else defaulted — the call the README and the example both show.
+@test fn the_mount_door_takes_its_knobs_by_name(): void {
+    ticked = signal(0)
+    m = mount("/todos", "Todos", empty_page, every_ms: 250, on_tick: fn() => ticked.set(1))
+    assert(m.claims("/todos/ws"))
+    assert(m.every_ms == 250)
+    assert(m.layers.len() == 0)
+    // The tick thunk is the one handed over, not a default no-op that quietly replaced it.
+    m.on_tick()
+    assert(ticked.get() == 1)
 }
 
 // --- Layers. ------------------------------------------------------------------------------------
