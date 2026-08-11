@@ -1,8 +1,10 @@
 [package]
 name = "para/aether_html"
 version = "0.4.0"
-# The minimum noeta this package works with; enforced at resolve time from noeta 0.2.1 on.
-toolchain = ">=0.5"
+# The minimum noeta this package works with; enforced at resolve time from noeta 0.2.1 on. 0.5.2 is
+# where a label binds on a METHOD call — before it, `LiveMount.new("/", …, on_tick: refresh)` bound
+# `refresh` positionally and failed to check, so this package's own door would not compile.
+toolchain = ">=0.5.2"
 license = "MIT OR Apache-2.0"
 description = "The per-frame onion for para/html LiveView pages — authorization, rate limiting, and tracing per websocket frame, in aether's vocabulary."
 keywords = ["liveview", "web", "aether", "middleware", "websocket"]

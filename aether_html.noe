@@ -178,7 +178,7 @@ pub fn serve(
 // This is what an app's entry point looks like once the page is mounted — the whole of it, with no
 // LiveView URL written anywhere in the app's own code:
 //
-//     app.use_middleware(mount("/", "Todos", page, on_tick: refresh))
+//     app.use_middleware(LiveMount.new("/", "Todos", page, on_tick: refresh))
 //
 //     fn fetch(req: Request) use (app): Response {
 //         return app.route(req)
@@ -215,7 +215,10 @@ pub class LiveMount {
     //
     // `layers` defaults to none, because the mount is worth having on its own: it is what puts the
     // page's URLs under the router instead of in the app's `fetch`, and an app with no per-frame
-    // policy to enforce should not have to pass `[]` to say so.
+    // policy to enforce should not have to pass `[]` to say so. Name the knobs you want and leave
+    // the rest — `LiveMount.new("/", "Todos", page, on_tick: refresh)`. That needs noeta 0.5.2,
+    // where a label binds on a method call as it always had on a function call; this package's
+    // `toolchain` floor says so.
     pub fn new(
         base: string,
         title: string,
@@ -265,32 +268,6 @@ pub class LiveMount {
     }
 }
 
-// Build a mount with its knobs named — the door to prefer at a call site:
-//
-//     app.use_middleware(mount("/", "Todos", page, on_tick: refresh))
-//
-// A free function rather than more arguments on `LiveMount.new`, for a reason that is the toolchain's
-// and not this package's: a **label binds on a call to a function, and is silently ignored on a call
-// to a method**. `LiveMount.new("/", "Todos", page, on_tick: refresh)` does not fail — it binds
-// `refresh` to `layers` positionally and reports a type error naming a parameter the author never
-// wrote. Until that is fixed, an API whose optional knobs are meant to be named cannot be a
-// constructor. para/html's `handle` is a free function for the same reason, which is why its
-// `every_ms:`/`on_tick:`/`styles:` work.
-//
-// `LiveMount.new` remains, and is what this calls; positional construction is fine when there is
-// nothing optional to say.
-pub fn mount(
-    base: string,
-    title: string,
-    render_page: () -> Html,
-    layers: List<dyn FrameMiddleware> = [],
-    every_ms: int = 500,
-    on_tick: () -> void = fn() {},
-    styles: ?Css = none,
-): LiveMount {
-    return LiveMount.new(base, title, render_page, layers, every_ms, on_tick, styles)
-}
-
 // A page with nothing in it — enough to build a mount, which is all the routing tests need.
 fn empty_page(): Html {
     return Html { skeleton: "", holes: [], ids: [], handlers: {}, regions: [] }
@@ -327,11 +304,11 @@ fn empty_page(): Html {
     assert(m.layers.len() == 0)
 }
 
-// The named-argument door builds the same mount, with the knobs an app actually reaches for bound by
-// name and everything else defaulted — the call the README and the example both show.
-@test fn the_mount_door_takes_its_knobs_by_name(): void {
+// The constructor takes the knobs an app actually reaches for by name, with everything else
+// defaulted — the call the README and the example both show.
+@test fn a_mount_takes_its_knobs_by_name(): void {
     ticked = signal(0)
-    m = mount("/todos", "Todos", empty_page, every_ms: 250, on_tick: fn() => ticked.set(1))
+    m = LiveMount.new("/todos", "Todos", empty_page, every_ms: 250, on_tick: fn() => ticked.set(1))
     assert(m.claims("/todos/ws"))
     assert(m.every_ms == 250)
     assert(m.layers.len() == 0)

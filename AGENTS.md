@@ -5,7 +5,7 @@ Guidance for coding agents working in this repo — the standalone repo of the *
 ## Repo layout
 
 - `noeta.toml` — the package manifest (`name = "para/aether_html"`). Pure Noeta (no `native` key), but it **depends on two sibling packages** — para/aether and para/html — bound under one `para` scope key as an array (multi-package-per-scope resolution). para/html is pinned to `^0.6`: the `Wake` seam landed in 0.3, 0.4 collapsed the entry points into one `handle` with named arguments and added the `base:` mounting `LiveMount` is built on, and 0.6 is where a mount at the root claims the page's three URLs instead of every path and the served document tells the shim which socket to open. `LiveMount` is only correct against 0.6 — against 0.5 a root mount swallows the app's other routes.
-- `aether_html.noe` — the whole surface: the `Frame`/`FrameMiddleware`/`FrameNext` onion, `onion`/`serve`, the `LiveMount` aether middleware and its `mount(…)` door, and the three shipped layers (`Authorize`, `RateLimit`, `Trace`).
+- `aether_html.noe` — the whole surface: the `Frame`/`FrameMiddleware`/`FrameNext` onion, `onion`/`serve`, the `LiveMount` aether middleware, and the three shipped layers (`Authorize`, `RateLimit`, `Trace`).
 - `examples/*/` — each a standalone package depending on this repo via `{ path = "../.." }` alongside the sibling deps.
 - `.github/workflows/` — CI (`ci.yml`) and the tag-triggered registry publish (`release.yml`).
 
