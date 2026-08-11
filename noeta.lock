@@ -3,30 +3,30 @@ version = 2
 
 [[package]]
 name = "para/aether"
-version = "0.2.0"
+version = "0.4.0"
 source = "git"
 url = "https://github.com/noeta-lang/para-aether"
-tag = "v0.2.0"
-sha = "d4f9dca75324c11e3781893b166f866518756111"
+tag = "v0.4.0"
+sha = "687c7c6126b9ae05f9bb59b731ae7ac2bdc730f0"
 edition = "2026"
-hash = "ddfba868af0dc9ba33ea1d6df2281694bf3e5aef0bab6ff27863f976cd0dfaed"
+hash = "6318bcd7f3778b7e25b02cdf6631716d79f615dd2d93976a1c37f2bdcbc73219"
 
 [[package]]
 name = "para/html"
-version = "0.4.0"
+version = "0.6.1"
 source = "git"
 url = "https://github.com/noeta-lang/para-html"
-tag = "v0.4.0"
-sha = "546ef32d19ca82c356d3d4a08dc16b660f79e0eb"
+tag = "v0.6.1"
+sha = "7318e37a1f0ff2380fe401ebd87db2449754891e"
 edition = "2026"
-hash = "b69c122f8638fd6c6d6aa5a37083c7134c0b900a8e518d77d36fdb02723eb86f"
+hash = "c52cfe5b9eb0f2718c1dc5093ef68111842531b1d2631de712a8e4e37ffb7d75"
 
 [[scope]]
 name = "para/aether"
 issuer = "https://token.actions.githubusercontent.com"
-identity = "https://github.com/noeta-lang/para-aether/.github/workflows/release.yml@refs/tags/v0.2.0"
+identity = "https://github.com/noeta-lang/para-aether/.github/workflows/release.yml@refs/tags/v0.4.0"
 
 [[scope]]
 name = "para/html"
 issuer = "https://token.actions.githubusercontent.com"
-identity = "https://github.com/noeta-lang/para-html/.github/workflows/release.yml@refs/tags/v0.4.0"
+identity = "https://github.com/noeta-lang/para-html/.github/workflows/release.yml@refs/tags/v0.6.1"
